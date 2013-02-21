@@ -18,7 +18,4 @@ function Teleidoscope(stdlib, foreign, heap) {
   return { main: $main };
 }
 
-var v = Teleidoscope({ Infinity: Infinity, NaN: NaN, Math: Math }).main();
-if (v !== undefined) {
-  console.log(v);
-}
+console.log(Teleidoscope({ Infinity: Infinity, NaN: NaN, Math: Math }).main());

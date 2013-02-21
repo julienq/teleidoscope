@@ -15,15 +15,14 @@ function Teleidoscope(stdlib, foreign, heap) {
 
   function printstar(n) {
     n = +n;
-    var i = 1.;
-    for (; (n - i)|0; i = i + 1.) putchard(42.);
-    return;
+    var i = 0.;
+    for (i = 1.; i < n; i = i + 1.) putchard(42.);
+    return 0.;
   }
 
   function $main() {
     printstar(72.);
-    putchard(10.);
-    return;
+    return +putchard(10.);
   }
 
   return { main: $main };
@@ -32,11 +31,10 @@ function Teleidoscope(stdlib, foreign, heap) {
 var foreign = {
   putchard: function (n) {
     require("util").print(String.fromCharCode(n));
+    return 0;
   }
 };
 
-var v = Teleidoscope({ Infinity: Infinity, NaN: NaN, Math: Math }, foreign)
-  .main();
-if (v !== undefined) {
-  console.log(v);
-}
+console.log(
+  Teleidoscope({ Infinity: Infinity, NaN: NaN, Math: Math }, foreign).main()
+);
