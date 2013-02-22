@@ -1,5 +1,2 @@
 *.swp
-kaleidoscope
-lexer
-parser
-compiler
+teleidoscope
