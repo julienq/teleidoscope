@@ -13,7 +13,10 @@ enum Token {
   tok_def = -2,         // def keyword
   tok_extern = -3,      // extern keyword
   tok_identifier = -4,  // identifier (see id_string)
-  tok_number = -5       // number (see num_val)
+  tok_number = -5,      // number (see num_val)
+  tok_if = -6,          // if keyword
+  tok_then = -7,        // then keyword
+  tok_else = -8,        // else keyword
 };
 
 // AST node types
@@ -23,7 +26,8 @@ enum {
   ast_binary,      // val = op, left, right
   ast_call,        // val = string (callee), left = first arg (then next)
   ast_prototype,   // val = identifiers (name, ...)
-  ast_function     // left = proto (ast_prototype), right = body
+  ast_function,    // left = proto (ast_prototype), right = body
+  ast_if           // val = cond, left = then, right = else
 };
 
 #pragma clang diagnostic ignored "-Wpadded"
@@ -52,6 +56,7 @@ typedef struct ast_node {
     double number;
     char *string;
     id_list *identifiers;
+    struct ast_node *node;
   } val;
   struct ast_node *left;
   struct ast_node *right;
@@ -66,6 +71,7 @@ ast_node *error(const char *);
 ast_node *parse_number_expr(void);
 ast_node *parse_paren_expr(ast_node *);
 ast_node *parse_identifier_expr(ast_node *);
+ast_node *parse_if_expr(ast_node *);
 ast_node *parse_primary(ast_node *);
 int get_tok_precedence(void);
 ast_node *parse_expression(ast_node *);
@@ -76,7 +82,7 @@ ast_node *parse_extern(void);
 ast_node *parse_top_level_expr(ast_node *);
 ast_node *parse(void);
 void output_def(ast_node *);
-void output_expr(ast_node *);
+void output_expr(ast_node *, bool);
 bool output_extern(id_list *);
 void output_main(ast_node *);
 void output(ast_node *);
@@ -124,6 +130,15 @@ int gettok(void) {
     }
     if (strcmp(tok_string, "extern") == 0) {
       return tok_extern;
+    }
+    if (strcmp(tok_string, "if") == 0) {
+      return tok_if;
+    }
+    if (strcmp(tok_string, "then") == 0) {
+      return tok_then;
+    }
+    if (strcmp(tok_string, "else") == 0) {
+      return tok_else;
     }
     return tok_identifier;
   }
@@ -237,13 +252,42 @@ ast_node *parse_identifier_expr(ast_node *p) {
   return n;
 }
 
+ast_node *parse_if_expr(ast_node *p) {
+  get_next_token();
+  ast_node *n = (ast_node *)malloc(sizeof(ast_node));
+  n->type = ast_if;
+  n->val.node = parse_expression(p);
+  if (!n->val.node) {
+    return NULL;
+  }
+  if (cur_tok != tok_then) {
+    return error("expected then");
+  }
+  get_next_token();
+  n->left = parse_expression(p);
+  if (!n->left) {
+    return NULL;
+  }
+  if (cur_tok != tok_else) {
+    return error("expected else");
+  }
+  get_next_token();
+  n->right = parse_expression(p);
+  if (!n->right) {
+    return NULL;
+  }
+  return n;
+}
+
 // primary ::= identifierexpr
+//         ::= ifexpr
 //         ::= numberexpr
 //         ::= parenexpr
 ast_node *parse_primary(ast_node *p) {
   switch (cur_tok) {
     case tok_identifier: return parse_identifier_expr(p);
     case tok_number: return parse_number_expr();
+    case tok_if: return parse_if_expr(p);
     case '(': return parse_paren_expr(p);
     default:
       get_next_token();
@@ -350,9 +394,12 @@ ast_node *parse_extern() {
   return parse_prototype();
 }
 
-void output_expr(ast_node *expr) {
+void output_expr(ast_node *expr, bool returns) {
   if (!expr) {
     return;
+  }
+  if (returns && expr->type != ast_if) {
+    printf("return ");
   }
   switch (expr->type) {
     case ast_number:
@@ -367,21 +414,41 @@ void output_expr(ast_node *expr) {
       break;
     case ast_binary:
       printf("(");
-      output_expr(expr->left);
+      output_expr(expr->left, false);
       printf(" %c ", (char) expr->val.op);
-      output_expr(expr->right);
+      output_expr(expr->right, false);
       printf(")");
       break;
     case ast_call:
       printf("+%s(", expr->val.string);
       for (ast_node *n = expr->left; n; n = n->next) {
-        output_expr(n);
+        output_expr(n, false);
         if (n->next) {
           printf(", ");
         }
       }
       printf(")");
       break;
+    case ast_if:
+      printf("if (");
+      output_expr(expr->val.node, false);
+      printf(") ");
+      if (returns) {
+        printf("return ");
+      }
+      output_expr(expr->left, false);
+      if (returns) {
+        printf("; return ");
+      } else {
+        printf("; else ");
+      }
+      output_expr(expr->right, false);
+  }
+  if (returns) {
+    if (expr->type == ast_if) {
+      printf(";\n    return 0;");
+    }
+    printf(";\n");
   }
 }
 
@@ -401,9 +468,8 @@ void output_def(ast_node *def) {
   for (lp = def->left->val.identifiers->next; lp; lp = lp->next) {
     printf("    %s = +%s;\n", lp->id, lp->id);
   }
-  printf("    return ");
-  output_expr(def->right);
-  printf(";\n");
+  printf("    ");
+  output_expr(def->right, true);
   printf("  }\n");
   output_def(def->next);
 }
@@ -437,7 +503,7 @@ void output_main(ast_node *n) {
     if (!n->next) {
       printf("return ");
     }
-    output_expr(n);
+    output_expr(n, false);
     printf(";\n");
   }
   printf("  }\n");
