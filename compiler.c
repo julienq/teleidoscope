@@ -497,7 +497,7 @@ bool output_extern(id_list *l) {
 }
 
 void output_main(ast_node *n) {
-  printf("  function $main() {\n");
+  printf("  function $() {\n");
   for (; n; n = n->next) {
     printf("    ");
     if (!n->next) {
@@ -581,12 +581,12 @@ void output(ast_node *p) {
   bool use_foreign = output_extern(p->val.identifiers);
   output_def(p->left);
   output_main(p->right);
-  printf("  return { main: $main };\n");
+  printf("  return $;\n");
   printf("}(this");
   if (use_foreign) {
     printf(", foreign");
   }
-  printf(")).main());\n");
+  printf("))());\n");
 }
 
 int main(void) {
