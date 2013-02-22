@@ -510,18 +510,17 @@ ast_node *parse(void) {
 }
 
 void output(ast_node *p) {
-  printf("function Teleidoscope(stdlib, foreign) {\n");
+  printf("console.log((function (stdlib, foreign) {\n");
   printf("  \"use asm\";\n");
   bool use_foreign = output_extern(p->val.identifiers);
   output_def(p->left);
   output_main(p->right);
   printf("  return { main: $main };\n");
-  printf("}\n");
-  printf("console.log(Teleidoscope(this");
+  printf("}(this");
   if (use_foreign) {
     printf(", foreign");
   }
-  printf(").main());\n");
+  printf(")).main());\n");
 }
 
 int main(void) {

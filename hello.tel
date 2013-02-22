@@ -1,0 +1,14 @@
+# Run with node.js: ((cat putchard.js && ./compiler) | node) < hello.tel
+
+extern putchard(char);
+putchard(72);
+putchard(101);
+putchard(108);
+putchard(108);
+putchard(111);
+putchard(44);
+putchard(32);
+putchard(19990);
+putchard(30028);
+putchard(33);
+putchard(10);
