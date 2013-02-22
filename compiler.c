@@ -36,12 +36,13 @@ typedef struct id_list {
   struct id_list *next;
 } id_list;
 
-// Function types
+// Identifier type bits
 enum {
-  id_math = 1,  // function in stdlib.Math
-  id_extern,    // extern functions (in ffi)
-  id_user,      // user-defined functions
-  id_used = 4   // mask for extern functions actually used
+  id_extern = 1,
+  id_stdlib = 2,
+  id_math = 4,
+  id_function = 8,
+  id_used = 16
 };
 
 typedef struct ast_node {
@@ -76,7 +77,7 @@ ast_node *parse_top_level_expr(ast_node *);
 ast_node *parse(void);
 void output_def(ast_node *);
 void output_expr(ast_node *);
-void output_extern(id_list *);
+bool output_extern(id_list *);
 void output_main(ast_node *);
 void output(ast_node *);
 
@@ -197,6 +198,11 @@ ast_node *parse_paren_expr(ast_node *p) {
 ast_node *parse_identifier_expr(ast_node *p) {
   ast_node *n = (ast_node *)malloc(sizeof(ast_node));
   n->val.string = strdup(tok_string);
+  // Mark the identifier as being used so that it will be exported
+  id_list *l = lookup(p->val.identifiers, n->val.string);
+  if (l) {
+    l->type |= id_used;
+  }
   get_next_token();
   if (cur_tok != '(') {
     n->type = ast_var;
@@ -228,11 +234,6 @@ ast_node *parse_identifier_expr(ast_node *p) {
     }
   }
   get_next_token();
-  // Mark the identifier as being used
-  id_list *l = lookup(p->val.identifiers, n->val.string);
-  if (l) {
-    l->type |= id_used;
-  }
   return n;
 }
 
@@ -355,7 +356,11 @@ void output_expr(ast_node *expr) {
   }
   switch (expr->type) {
     case ast_number:
-      printf("%g.", expr->val.number);
+      if (expr->val.number - (double)(int)expr->val.number == 0.0) {
+        printf("%g.", expr->val.number);
+      } else {
+        printf("%g", expr->val.number);
+      }
       break;
     case ast_var:
       printf("%s", expr->val.string);
@@ -403,19 +408,26 @@ void output_def(ast_node *def) {
   output_def(def->next);
 }
 
-void output_extern(id_list *l) {
+bool output_extern(id_list *l) {
+  bool use_foreign = false;
   if (l) {
-    if ((l->type & id_used) == id_used) {
+    if (((l->type & id_used) == id_used) &&
+        ((l->type & id_extern) == id_extern)) {
       printf("  var %s = ", l->id);
-      if ((l->type & id_math) == id_math) {
-        printf("stdlib.Math.%s", l->id);
-      } else if ((l->type & id_extern) == id_extern) {
-        printf("foreign.%s", l->id);
+      if ((l->type & id_stdlib) == id_stdlib) {
+        printf("stdlib.");
+        if ((l->type & id_math) == id_math) {
+          printf("Math.");
+        }
+      } else {
+        printf("foreign.");
+        use_foreign = true;
       }
-      printf(";\n");
+      printf("%s;\n", l->id);
     }
-    output_extern(l->next);
+    use_foreign = output_extern(l->next) || use_foreign;
   }
+  return use_foreign;
 }
 
 void output_main(ast_node *n) {
@@ -433,22 +445,36 @@ void output_main(ast_node *n) {
 
 ast_node *parse(void) {
   ast_node *n;
+  id_list *l;
   ast_node *p = (ast_node *)malloc(sizeof(ast_node));
   p->val.identifiers = NULL;
-  p->val.identifiers = prepend_id(p->val.identifiers, "acos", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "asin", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "atan", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "cos", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "sin", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "tan", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "ceil", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "floor", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "exp", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "log", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "sqrt", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "abs", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "atan2", id_math);
-  p->val.identifiers = prepend_id(p->val.identifiers, "pow", id_math);
+  int mask = id_extern | id_stdlib;
+  p->val.identifiers = prepend_id(p->val.identifiers, "Infinity", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "NaN", mask);
+  mask |= id_math;
+  p->val.identifiers = prepend_id(p->val.identifiers, "E", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "LN10", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "LN2", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "LOG2E", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "LOG10E", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "PI", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "SQRT1_2", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "SQRT2", mask);
+  mask |= id_function;
+  p->val.identifiers = prepend_id(p->val.identifiers, "acos", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "asin", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "atan", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "cos", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "sin", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "tan", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "ceil", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "floor", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "exp", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "log", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "sqrt", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "abs", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "atan2", mask);
+  p->val.identifiers = prepend_id(p->val.identifiers, "pow", mask);
   get_next_token();
   while (cur_tok != tok_eof) {
     switch (cur_tok) {
@@ -460,12 +486,15 @@ ast_node *parse(void) {
         n->next = p->left;
         p->left = n;
         p->val.identifiers = prepend_id(p->val.identifiers,
-            n->left->val.identifiers->id, id_user);
+            n->left->val.identifiers->id, id_function);
         break;
       case tok_extern:
         n = parse_extern();
-        p->val.identifiers = prepend_id(p->val.identifiers,
-            n->val.identifiers->id, id_extern);
+        l = lookup(p->val.identifiers, n->val.identifiers->id);
+        if (!l) {
+          p->val.identifiers = prepend_id(p->val.identifiers,
+              n->val.identifiers->id, id_extern | id_function);
+        }
         break;
       default:
         n = parse_expression(p);
@@ -481,14 +510,18 @@ ast_node *parse(void) {
 }
 
 void output(ast_node *p) {
-  printf("function Teleidoscope(stdlib, foreign, heap) {\n");
+  printf("function Teleidoscope(stdlib, foreign) {\n");
   printf("  \"use asm\";\n");
-  output_extern(p->val.identifiers);
+  bool use_foreign = output_extern(p->val.identifiers);
   output_def(p->left);
   output_main(p->right);
   printf("  return { main: $main };\n");
   printf("}\n");
-  printf("console.log(Teleidoscope(this).main());\n");
+  printf("console.log(Teleidoscope(this");
+  if (use_foreign) {
+    printf(", foreign");
+  }
+  printf(").main());\n");
 }
 
 int main(void) {
